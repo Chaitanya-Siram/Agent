@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LensAI — Article Search Agent</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="/static/style.css" />
+
+  <!-- React + Babel (CDN — no build step needed) -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- Load order matters: config → utils → components → app -->
+
+  <!-- 1. Agent configuration — edit agent/agent.config.js to change behaviour -->
+  <script src="/agent/agent.config.js"></script>
+
+  <!-- 2. News sources — edit src/sources.js to add or enable more sources -->
+  <script src="/src/sources.js"></script>
+
+  <!-- 3. Utility functions (date, RSS parser, export helpers) -->
+  <script src="/src/utils.js"></script>
+
+  <!-- 4. React UI components (ArticleCard, ExportBar, etc.) -->
+  <script type="text/babel" src="/src/components.jsx"></script>
+
+  <!-- 5. Main application logic + chat handler -->
+  <script type="text/babel" src="/src/app.jsx"></script>
+</body>
+</html>
