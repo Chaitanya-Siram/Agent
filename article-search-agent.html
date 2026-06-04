@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Article Search Agent</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #FAFAF8;
+      --surface: #FFFFFF;
+      --surface-hover: #F5F5F2;
+      --border: #E8E8E3;
+      --border-strong: #D0D0C8;
+      --text-primary: #1A1A18;
+      --text-secondary: #5A5A54;
+      --text-muted: #9A9A90;
+      --accent: #2C6E49;
+      --accent-light: #EAF3ED;
+      --accent-hover: #235939;
+      --error: #C0392B;
+      --error-light: #FDEDEC;
+      --warning: #E67E22;
+      --badge-bg: #F0EEE8;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+      --shadow-lg: 0 8px 24px rgba(0,0,0,0.10), 0 4px 8px rgba(0,0,0,0.05);
+      --radius: 10px;
+      --radius-sm: 6px;
+      --radius-lg: 14px;
+      --sidebar-width: 260px;
+      --font-display: 'Playfair Display', Georgia, serif;
+      --font-body: 'DM Sans', system-ui, sans-serif;
+    }
+
+    html, body, #root { height: 100%; }
+    body { font-family: var(--font-body); background: var(--bg); color: var(--text-primary); font-size: 14px; line-height: 1.5; }
+
+    /* Layout */
+    .app { display: flex; height: 100vh; overflow: hidden; }
+
+    /* Sidebar */
+    .sidebar {
+      width: var(--sidebar-width);
+      min-width: var(--sidebar-width);
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      padding: 0;
+    }
+    .sidebar-header {
+      padding: 20px 18px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .sidebar-logo {
+      font-family: var(--font-display);
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: -0.3px;
+    }
+    .sidebar-logo span { color: var(--accent); }
+    .sidebar-tagline { font-size: 11px; color: var(--text-muted); margin-top: 2px; letter-spacing: 0.2px; }
+
+    .sidebar-section { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+    .sidebar-section:last-child { border-bottom: none; }
+    .section-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+
+    /* API Key */
+    .api-key-input {
+      width: 100%;
+      padding: 7px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-body);
+      font-size: 12px;
+      background: var(--bg);
+      color: var(--text-primary);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .api-key-input:focus { border-color: var(--accent); }
+    .api-key-hint { font-size: 10px; color: var(--text-muted); margin-top: 5px; }
+    .api-key-status { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; margin-top: 4px; }
+    .api-key-status.valid { color: var(--accent); }
+    .api-key-status.invalid { color: var(--error); }
+
+    /* Quick ranges */
+    .quick-ranges { display: flex; flex-wrap: wrap; gap: 5px; }
+    .range-btn {
+      padding: 5px 10px;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      background: var(--bg);
+      font-family: var(--font-body);
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .range-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+    .range-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-light); font-weight: 600; }
+
+    /* Date pickers */
+    .date-group { display: flex; flex-direction: column; gap: 7px; }
+    .date-label { font-size: 11px; color: var(--text-secondary); font-weight: 500; }
+    .date-input {
+      width: 100%;
+      padding: 6px 9px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-body);
+      font-size: 12px;
+      background: var(--bg);
+      color: var(--text-primary);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .date-input:focus { border-color: var(--accent); }
+
+    /* Sort & Max */
+    .select-input {
+      width: 100%;
+      padding: 6px 9px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-body);
+      font-size: 12px;
+      background: var(--bg);
+      color: var(--text-primary);
+      outline: none;
+      cursor: pointer;
+      transition: border-color 0.15s;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239A9A90' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 8px center;
+      padding-right: 24px;
+    }
+    .select-input:focus { border-color: var(--accent); }
+
+    /* Main content */
+    .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* Chat area */
+    .chat-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* Welcome */
+    .welcome {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 48px 24px;
+      text-align: center;
+      gap: 16px;
+    }
+    .welcome-icon {
+      width: 56px; height: 56px;
+      background: var(--accent-light);
+      border-radius: 16px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 26px;
+    }
+    .welcome-title {
+      font-family: var(--font-display);
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: -0.5px;
+    }
+    .welcome-sub { font-size: 14px; color: var(--text-secondary); max-width: 400px; line-height: 1.6; }
+
+    /* Chips */
+    .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 4px; }
+    .chip {
+      padding: 7px 14px;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      background: var(--surface);
+      font-family: var(--font-body);
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .chip:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+
+    /* Message bubbles */
+    .message { display: flex; gap: 10px; max-width: 780px; }
+    .message.user { flex-direction: row-reverse; align-self: flex-end; }
+    .message-avatar {
+      width: 30px; height: 30px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 600;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .message.user .message-avatar { background: var(--accent); color: white; }
+    .message.assistant .message-avatar { background: var(--badge-bg); color: var(--text-secondary); }
+    .message-content {
+      padding: 10px 14px;
+      border-radius: var(--radius);
+      font-size: 13.5px;
+      line-height: 1.6;
+      max-width: 580px;
+    }
+    .message.user .message-content { background: var(--accent); color: white; border-radius: var(--radius) 3px var(--radius) var(--radius); }
+    .message.assistant .message-content { background: var(--surface); border: 1px solid var(--border); color: var(--text-primary); border-radius: 3px var(--radius) var(--radius) var(--radius); box-shadow: var(--shadow-sm); }
+
+    /* Loading skeleton */
+    .skeleton-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; display: flex; flex-direction: column; gap: 10px; box-shadow: var(--shadow-sm); }
+    .skeleton-line {
+      height: 12px; border-radius: 4px;
+      background: linear-gradient(90deg, #F0EEE8 25%, #E8E6DF 50%, #F0EEE8 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+    }
+    .skeleton-line.short { width: 40%; }
+    .skeleton-line.medium { width: 70%; }
+    .skeleton-line.tall { height: 16px; width: 90%; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    /* Results section */
+    .results-section { padding: 8px 0 20px; }
+    .results-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 14px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .results-title { font-family: var(--font-display); font-size: 18px; font-weight: 600; }
+    .results-count { font-size: 12px; color: var(--text-muted); }
+
+    /* Article card */
+    .article-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      margin-bottom: 10px;
+      box-shadow: var(--shadow-sm);
+      transition: box-shadow 0.15s, border-color 0.15s;
+    }
+    .article-card:hover { box-shadow: var(--shadow-md); border-color: var(--border-strong); }
+    .card-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .card-favicon {
+      width: 16px; height: 16px;
+      border-radius: 3px;
+      object-fit: contain;
+      flex-shrink: 0;
+    }
+    .card-source { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+    .card-dot { width: 3px; height: 3px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
+    .card-date {
+      font-size: 11px;
+      color: var(--text-muted);
+      background: var(--badge-bg);
+      padding: 2px 7px;
+      border-radius: 10px;
+    }
+    .card-title {
+      font-family: var(--font-display);
+      font-size: 16px;
+      font-weight: 600;
+      line-height: 1.4;
+      margin-bottom: 8px;
+      letter-spacing: -0.2px;
+    }
+    .card-title a { color: var(--text-primary); text-decoration: none; transition: color 0.15s; }
+    .card-title a:hover { color: var(--accent); }
+    .card-summary { font-size: 13px; color: var(--text-secondary); line-height: 1.65; margin-bottom: 10px; }
+    .card-url { font-size: 11px; color: var(--text-muted); word-break: break-all; font-family: monospace; }
+
+    /* Export bar */
+    .export-bar {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .export-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-muted); margin-right: 4px; }
+    .export-btn {
+      padding: 6px 13px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      font-family: var(--font-body);
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .export-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+    .export-btn svg { width: 13px; height: 13px; }
+
+    /* Chat input */
+    .chat-input-area {
+      padding: 14px 24px 18px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+    }
+    .chat-input-row { display: flex; gap: 10px; align-items: flex-end; }
+    .chat-textarea {
+      flex: 1;
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-family: var(--font-body);
+      font-size: 14px;
+      background: var(--bg);
+      color: var(--text-primary);
+      outline: none;
+      resize: none;
+      line-height: 1.5;
+      min-height: 44px;
+      max-height: 120px;
+      transition: border-color 0.15s;
+    }
+    .chat-textarea:focus { border-color: var(--accent); }
+    .chat-textarea::placeholder { color: var(--text-muted); }
+    .send-btn {
+      width: 44px; height: 44px;
+      border-radius: var(--radius);
+      border: none;
+      background: var(--accent);
+      color: white;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.15s;
+    }
+    .send-btn:hover { background: var(--accent-hover); }
+    .send-btn:disabled { background: var(--border-strong); cursor: not-allowed; }
+    .send-btn svg { width: 18px; height: 18px; }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.4);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1000;
+      backdrop-filter: blur(2px);
+    }
+    .modal {
+      background: var(--surface);
+      border-radius: var(--radius-lg);
+      padding: 28px;
+      width: 480px;
+      max-width: 90vw;
+      box-shadow: var(--shadow-lg);
+    }
+    .modal-title { font-family: var(--font-display); font-size: 20px; font-weight: 700; margin-bottom: 18px; }
+    .modal-field { margin-bottom: 14px; }
+    .modal-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; display: block; }
+    .modal-input {
+      width: 100%;
+      padding: 8px 11px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-body);
+      font-size: 13px;
+      background: var(--bg);
+      color: var(--text-primary);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .modal-input:focus { border-color: var(--accent); }
+    .modal-textarea { min-height: 80px; resize: vertical; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+    .modal-btn-cancel {
+      padding: 8px 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--bg);
+      font-family: var(--font-body);
+      font-size: 13px;
+      cursor: pointer;
+      color: var(--text-secondary);
+    }
+    .modal-btn-cancel:hover { border-color: var(--border-strong); }
+    .modal-btn-primary {
+      padding: 8px 18px;
+      border: none;
+      border-radius: var(--radius-sm);
+      background: var(--accent);
+      color: white;
+      font-family: var(--font-body);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .modal-btn-primary:hover { background: var(--accent-hover); }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 10px; }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      background: var(--text-primary);
+      color: white;
+      padding: 10px 18px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-weight: 500;
+      z-index: 2000;
+      box-shadow: var(--shadow-lg);
+      animation: slideUp 0.2s ease;
+    }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Error */
+    .error-msg { background: var(--error-light); border: 1px solid #FAD7D3; border-radius: var(--radius); padding: 12px 16px; font-size: 13px; color: var(--error); }
+
+    /* Inline loader */
+    .dots { display: inline-flex; gap: 4px; align-items: center; }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); animation: bounce 1.4s infinite ease-in-out; }
+    .dot:nth-child(1) { animation-delay: 0s; }
+    .dot:nth-child(2) { animation-delay: 0.2s; }
+    .dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce { 0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; } 40% { transform: scale(1); opacity: 1; } }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const CHIPS = [
+  "Tata Motors news this week",
+  "Apple AND Samsung",
+  "OpenAI funding 2024",
+  "Reliance expansion last 30 days",
+];
+
+function toISO(d) { return d ? d.toISOString().slice(0, 10) : null; }
+
+function applyQuickRange(days) {
+  const now = new Date();
+  const from = new Date(now - days * 86400000);
+  return { dateFrom: toISO(from), dateTo: toISO(now) };
+}
+
+function formatDateIN(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function getFaviconUrl(link) {
+  try {
+    const url = new URL(link);
+    return `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=32`;
+  } catch { return ''; }
+}
+
+function extractDomain(link) {
+  try { return new URL(link).hostname.replace('www.', ''); } catch { return link; }
+}
+
+// ─── XML Parser ───────────────────────────────────────────────────────────────
+
+function parseRSS(xmlText) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlText, 'text/xml');
+  const items = Array.from(doc.querySelectorAll('item'));
+  return items.map(item => {
+    const get = tag => item.querySelector(tag)?.textContent?.trim() || '';
+    const link = get('link') || item.querySelector('guid')?.textContent?.trim() || '';
+    const pubDate = get('pubDate');
+    const sourceName = item.querySelector('source')?.textContent?.trim() || extractDomain(link);
+    return {
+      title: get('title'),
+      link,
+      pubDate,
+      pubDateISO: pubDate ? new Date(pubDate).toISOString() : null,
+      source: sourceName,
+      description: get('description').replace(/<[^>]*>/g, '').slice(0, 300),
+    };
+  }).filter(a => a.title && a.link);
+}
+
+function generateSummary(description, title) {
+  if (!description || description.length < 30) return title;
+  const sentences = description.split(/(?<=[.!?])\s+/);
+  return sentences.slice(0, 3).join(' ').slice(0, 280);
+}
+
+// ─── Anthropic API ────────────────────────────────────────────────────────────
+
+async function extractSearchParams(query, apiKey) {
+  const systemPrompt = `You are a news search query optimizer. Given a natural language query, extract:
+1. Optimized search keywords (Boolean-compatible: AND, OR, NOT)
+2. Date range (resolve expressions like "last week", "this month", "Q1 2025", "since January" into exact ISO dates)
+3. Return ONLY valid JSON in this exact format:
+{"keywords": "...", "date_from": "YYYY-MM-DD or null", "date_to": "YYYY-MM-DD or null", "intent": "brief description"}
+
+Today's date is ${new Date().toISOString().slice(0, 10)}.
+Rules:
+- "last week" = last 7 days
+- "this week" = last 7 days
+- "last month" / "this month" = last 30 days
+- "last 30 days" = last 30 days
+- "Q1 2025" = 2025-01-01 to 2025-03-31
+- For Boolean: keep AND/OR/NOT in keywords
+- Keywords should be concise and search-optimized`;
+
+  const response = await fetch('/proxy/anthropic', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 500,
+      messages: [{
+        role: 'user',
+        content: `Extract search parameters from this query: "${query}"\n\nReturn ONLY the JSON object, no explanation.`
+      }],
+      system: systemPrompt,
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error?.message || `API error ${response.status}`);
+  }
+
+  const data = await response.json();
+  const text = data.content?.[0]?.text || '';
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('Could not parse AI response');
+  return JSON.parse(jsonMatch[0]);
+}
+
+// ─── News Fetcher ─────────────────────────────────────────────────────────────
+
+async function fetchNews(keywords) {
+  const proxyUrl = `/proxy/news?q=${encodeURIComponent(keywords)}`;
+  const response = await fetch(proxyUrl);
+  if (!response.ok) throw new Error(`News fetch failed: ${response.status}`);
+  const xmlText = await response.text();
+  return parseRSS(xmlText);
+}
+
+// ─── Export helpers ───────────────────────────────────────────────────────────
+
+function articlesToCSV(articles) {
+  const header = ['Headline', 'Source', 'Date', 'Summary', 'Link'];
+  const rows = articles.map(a => [
+    `"${(a.title || '').replace(/"/g, '""')}"`,
+    `"${(a.source || '').replace(/"/g, '""')}"`,
+    `"${formatDateIN(a.pubDateISO)}"`,
+    `"${(a.description || '').replace(/"/g, '""')}"`,
+    `"${a.link}"`,
+  ]);
+  return [header, ...rows].map(r => r.join(',')).join('\n');
+}
+
+function downloadBlob(content, filename, mime) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function generateHTMLReport(articles, query) {
+  const unique = [...new Set(articles.map(a => a.source))].length;
+  const last7 = articles.filter(a => {
+    if (!a.pubDateISO) return false;
+    return (Date.now() - new Date(a.pubDateISO)) < 7 * 86400000;
+  }).length;
+  const rows = articles.map((a, i) => `
+    <tr>
+      <td style="padding:10px 8px;border-bottom:1px solid #E8E8E3;font-weight:600;font-size:13px;">${i + 1}</td>
+      <td style="padding:10px 8px;border-bottom:1px solid #E8E8E3;"><a href="${a.link}" style="color:#2C6E49;text-decoration:none;">${a.title}</a></td>
+      <td style="padding:10px 8px;border-bottom:1px solid #E8E8E3;font-size:12px;white-space:nowrap;">${a.source}</td>
+      <td style="padding:10px 8px;border-bottom:1px solid #E8E8E3;font-size:12px;white-space:nowrap;">${formatDateIN(a.pubDateISO)}</td>
+      <td style="padding:10px 8px;border-bottom:1px solid #E8E8E3;font-size:12px;color:#5A5A54;">${(a.description || '').slice(0, 120)}…</td>
+    </tr>`).join('');
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Article Report — ${query}</title>
+<style>body{font-family:system-ui,sans-serif;max-width:960px;margin:40px auto;color:#1A1A18;padding:0 20px;}
+h1{font-size:24px;margin-bottom:4px;}p.sub{color:#5A5A54;font-size:14px;margin-bottom:28px;}
+.stats{display:flex;gap:24px;margin-bottom:28px;}.stat{background:#F5F5F2;border-radius:8px;padding:14px 20px;}
+.stat-n{font-size:28px;font-weight:700;color:#2C6E49;}.stat-l{font-size:12px;color:#5A5A54;margin-top:2px;}
+table{width:100%;border-collapse:collapse;}th{text-align:left;padding:10px 8px;background:#F5F5F2;font-size:12px;font-weight:600;letter-spacing:0.4px;text-transform:uppercase;color:#5A5A54;}
+@media print{.no-print{display:none;}}
+</style></head><body>
+<button class="no-print" onclick="window.print()" style="padding:8px 16px;background:#2C6E49;color:white;border:none;border-radius:6px;cursor:pointer;margin-bottom:20px;font-size:13px;">Print / Save as PDF</button>
+<h1>Article Research Report</h1>
+<p class="sub">Query: <strong>${query}</strong> &nbsp;·&nbsp; Generated: ${new Date().toLocaleDateString('en-IN', { dateStyle: 'long' })}</p>
+<div class="stats">
+  <div class="stat"><div class="stat-n">${articles.length}</div><div class="stat-l">Total Articles</div></div>
+  <div class="stat"><div class="stat-n">${unique}</div><div class="stat-l">Unique Sources</div></div>
+  <div class="stat"><div class="stat-n">${last7}</div><div class="stat-l">Last 7 Days</div></div>
+</div>
+<table><thead><tr><th>#</th><th>Headline</th><th>Source</th><th>Date</th><th>Summary</th></tr></thead>
+<tbody>${rows}</tbody></table>
+</body></html>`;
+}
+
+// ─── Components ───────────────────────────────────────────────────────────────
+
+function SkeletonCard() {
+  return (
+    <div className="skeleton-card">
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div className="skeleton-line short" style={{ height: 10, width: 80 }}/>
+        <div className="skeleton-line short" style={{ height: 10, width: 60 }}/>
+      </div>
+      <div className="skeleton-line tall" />
+      <div className="skeleton-line medium" />
+      <div className="skeleton-line medium" style={{ width: '55%' }} />
+      <div className="skeleton-line short" style={{ width: 200, height: 9 }} />
+    </div>
+  );
+}
+
+function ArticleCard({ article }) {
+  const summary = generateSummary(article.description, article.title);
+  return (
+    <div className="article-card">
+      <div className="card-meta">
+        {article.link && <img className="card-favicon" src={getFaviconUrl(article.link)} alt="" onError={e => e.target.style.display='none'} />}
+        <span className="card-source">{article.source}</span>
+        <span className="card-dot" />
+        <span className="card-date">{formatDateIN(article.pubDateISO)}</span>
+      </div>
+      <div className="card-title">
+        <a href={article.link} target="_blank" rel="noopener noreferrer">{article.title}</a>
+      </div>
+      {summary && <div className="card-summary">{summary}</div>}
+      <div className="card-url">{article.link}</div>
+    </div>
+  );
+}
+
+function EmailModal({ articles, query, onClose }) {
+  const [to, setTo] = useState('');
+  const [subject, setSubject] = useState(`Article Report: ${query}`);
+  const [note, setNote] = useState('');
+
+  const handleSend = () => {
+    const body = `${note ? note + '\n\n' : ''}Query: ${query}\nTotal results: ${articles.length}\n\n` +
+      articles.map((a, i) => `${i+1}. ${a.title}\n   Source: ${a.source}\n   Date: ${formatDateIN(a.pubDateISO)}\n   Link: ${a.link}`).join('\n\n');
+    const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.open(mailto);
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-title">Share via Email</div>
+        <div className="modal-field">
+          <label className="modal-label">Recipient</label>
+          <input className="modal-input" type="email" placeholder="recipient@example.com" value={to} onChange={e => setTo(e.target.value)} />
+        </div>
+        <div className="modal-field">
+          <label className="modal-label">Subject</label>
+          <input className="modal-input" type="text" value={subject} onChange={e => setSubject(e.target.value)} />
+        </div>
+        <div className="modal-field">
+          <label className="modal-label">Optional Note</label>
+          <textarea className="modal-input modal-textarea" placeholder="Add a personal note..." value={note} onChange={e => setNote(e.target.value)} />
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
+          All {articles.length} article links will be included in the email body.
+        </div>
+        <div className="modal-actions">
+          <button className="modal-btn-cancel" onClick={onClose}>Cancel</button>
+          <button className="modal-btn-primary" onClick={handleSend}>Open in Mail</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ExportBar({ articles, query }) {
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [toast, setToast] = useState('');
+
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2500); };
+
+  const exportCSV = () => {
+    downloadBlob(articlesToCSV(articles), `articles-${Date.now()}.csv`, 'text/csv');
+    showToast('CSV downloaded');
+  };
+
+  const exportJSON = () => {
+    const payload = {
+      query,
+      exportedAt: new Date().toISOString(),
+      totalCount: articles.length,
+      articles: articles.map(a => ({ title: a.title, source: a.source, pubDate: a.pubDateISO, summary: a.description, link: a.link })),
+    };
+    downloadBlob(JSON.stringify(payload, null, 2), `articles-${Date.now()}.json`, 'application/json');
+    showToast('JSON downloaded');
+  };
+
+  const exportHTML = () => {
+    const html = generateHTMLReport(articles, query);
+    const w = window.open('', '_blank');
+    w.document.write(html);
+    w.document.close();
+  };
+
+  const copyLinks = () => {
+    const text = articles.map(a => `${a.title}\n${a.link}`).join('\n\n');
+    navigator.clipboard.writeText(text).then(() => showToast('Links copied to clipboard'));
+  };
+
+  return (
+    <>
+      <div className="export-bar">
+        <span className="export-label">Export</span>
+        <button className="export-btn" onClick={exportCSV}>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 3h12M2 8h8M2 13h5M11 10l3 3-3 3M14 13H9"/></svg>
+          CSV
+        </button>
+        <button className="export-btn" onClick={exportJSON}>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 3c-1 0-2 .5-2 2s1 2 2 2c1 0 2 .5 2 2s-1 2-2 2"/><path d="M8 3v10M12 3c1 0 2 .5 2 2s-1 2-2 2c-1 0-2 .5-2 2s1 2 2 2"/></svg>
+          JSON
+        </button>
+        <button className="export-btn" onClick={exportHTML}>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 5L1 8l3 3M12 5l3 3-3 3M9 3l-2 10"/></svg>
+          HTML Report
+        </button>
+        <button className="export-btn" onClick={() => setEmailOpen(true)}>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="3" width="14" height="10" rx="1.5"/><path d="M1 5l7 5 7-5"/></svg>
+          Email
+        </button>
+        <button className="export-btn" onClick={copyLinks}>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M5 11H3a1.5 1.5 0 01-1.5-1.5v-7A1.5 1.5 0 013 1h7A1.5 1.5 0 0111.5 3v2"/></svg>
+          Copy Links
+        </button>
+      </div>
+      {emailOpen && <EmailModal articles={articles} query={query} onClose={() => setEmailOpen(false)} />}
+      {toast && <div className="toast">{toast}</div>}
+    </>
+  );
+}
+
+// ─── Main App ─────────────────────────────────────────────────────────────────
+
+function App() {
+  const [apiKey, setApiKey] = useState('');
+  const [apiKeyValid, setApiKeyValid] = useState(null);
+  const [filters, setFilters] = useState({ dateFrom: '', dateTo: '', sort: 'newest', maxResults: 10, activeRange: '' });
+  const [chatHistory, setChatHistory] = useState([]);
+  const [articles, setArticles] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [inputValue, setInputValue] = useState('');
+  const [lastQuery, setLastQuery] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const chatEndRef = useRef(null);
+  const textareaRef = useRef(null);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatHistory, loading]);
+
+  const setQuickRange = (days, label) => {
+    const { dateFrom, dateTo } = applyQuickRange(days);
+    setFilters(f => ({ ...f, dateFrom, dateTo, activeRange: label }));
+  };
+
+  const handleSearch = useCallback(async (query) => {
+    if (!query.trim()) return;
+
+    setErrorMsg('');
+    setLoading(true);
+    setLastQuery(query);
+    setArticles([]);
+
+    try {
+      // Step 1: Extract search params via Anthropic
+      const params = await extractSearchParams(query, apiKey.trim());
+
+      // Step 2: Determine final date range (chat query overrides sidebar)
+      let dateFrom = params.date_from || filters.dateFrom || null;
+      let dateTo = params.date_to || filters.dateTo || null;
+
+      // Step 3: Fetch RSS
+      const rawArticles = await fetchNews(params.keywords || query);
+
+      // Step 4: Filter by date
+      let filtered = rawArticles.filter(a => {
+        if (!a.pubDateISO) return true;
+        const d = new Date(a.pubDateISO);
+        if (dateFrom && d < new Date(dateFrom)) return false;
+        if (dateTo && d > new Date(dateTo + 'T23:59:59')) return false;
+        return true;
+      });
+
+      // Step 5: Sort
+      if (filters.sort === 'newest') {
+        filtered.sort((a, b) => new Date(b.pubDateISO || 0) - new Date(a.pubDateISO || 0));
+      } else if (filters.sort === 'oldest') {
+        filtered.sort((a, b) => new Date(a.pubDateISO || 0) - new Date(b.pubDateISO || 0));
+      }
+
+      // Step 6: Slice
+      const final = filtered.slice(0, filters.maxResults);
+
+      setArticles(final);
+      setApiKeyValid(true);
+
+      const dateInfo = dateFrom || dateTo
+        ? ` (${dateFrom || '…'} to ${dateTo || 'now'})`
+        : '';
+
+      const assistantMsg = final.length > 0
+        ? `Found **${final.length}** articles for "${params.keywords}"${dateInfo}. ${params.intent || ''}`
+        : `No articles found for "${params.keywords}"${dateInfo}. Try a broader query or wider date range.`;
+
+      setChatHistory(h => [...h, { role: 'assistant', content: assistantMsg }]);
+    } catch (err) {
+      const msg = err.message || 'Something went wrong.';
+      setErrorMsg(msg);
+      setChatHistory(h => [...h, { role: 'assistant', content: `Error: ${msg}` }]);
+      if (msg.includes('401') || msg.includes('API key')) setApiKeyValid(false);
+    } finally {
+      setLoading(false);
+    }
+  }, [apiKey, filters]);
+
+  const handleChat = useCallback((query) => {
+    if (!query.trim()) return;
+    setChatHistory(h => [...h, { role: 'user', content: query }]);
+
+    const lower = query.toLowerCase().trim();
+    const conversationalPatterns = [
+      /^(hi|hello|hey|howdy|hiya|greetings|good\s+(morning|afternoon|evening|day))\b/,
+      /^(how are you|how'?s it going|what'?s up|how do you do)\b/,
+      /^(thanks?|thank you|ty|cheers|appreciate( it| that)?|thx)\b/,
+      /^(bye|goodbye|see you|cya|take care|later)\b/,
+      /^(ok(ay)?|got it|alright|sure|cool|great|nice|awesome|perfect|wow)\b/,
+      /^(who are you|what are you|what can you do|what do you do|help me?|about you)\b/,
+      /^(lol|haha|ha+)\b/,
+    ];
+    const isChat = conversationalPatterns.some(p => p.test(lower));
+
+    if (isChat) {
+      let reply;
+      if (/^(hi|hello|hey|howdy|hiya|greetings|good\s+(morning|afternoon|evening|day))/.test(lower))
+        reply = "Hello! I'm LensAI, your article search assistant. Ask me to find news on any topic — try \"Tata Motors earnings this week\", \"Apple AND Samsung 2024\", or \"OpenAI funding last month\".";
+      else if (/^(how are you|how'?s it going|what'?s up|how do you do)/.test(lower))
+        reply = "I'm doing great and ready to search! What news topic are you curious about today?";
+      else if (/^(thanks?|thank you|ty|cheers|appreciate|thx)/.test(lower))
+        reply = "You're welcome! Let me know if you'd like to search for more articles.";
+      else if (/^(bye|goodbye|see you|cya|take care|later)/.test(lower))
+        reply = "Goodbye! Come back any time you need news research.";
+      else if (/^(who are you|what are you|what can you do|what do you do|help|about you)/.test(lower))
+        reply = "I'm LensAI — an AI-powered article search agent.\n\nI understand natural language like:\n• \"Tata Motors news this week\"\n• \"Apple AND Samsung earnings\"\n• \"OpenAI funding since January\"\n\nI extract keywords, resolve date expressions, and fetch the latest articles from Google News. Use the sidebar to filter by date, sort order, and max results.";
+      else
+        reply = "I'm here to help you find news articles. Try a query like \"Reliance expansion last 30 days\" or \"ISRO launch 2024\".";
+      setChatHistory(h => [...h, { role: 'assistant', content: reply }]);
+      return;
+    }
+
+    if (!apiKey.trim()) {
+      setChatHistory(h => [...h, { role: 'assistant', content: 'Please enter your Anthropic API key in the sidebar to search for articles.' }]);
+      return;
+    }
+    handleSearch(query);
+  }, [apiKey, handleSearch]);
+
+  const handleSubmit = () => {
+    const q = inputValue.trim();
+    if (!q || loading) return;
+    setInputValue('');
+    handleChat(q);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); }
+  };
+
+  return (
+    <div className="app">
+      {/* ── Sidebar ── */}
+      <aside className="sidebar">
+        <div className="sidebar-header">
+          <div className="sidebar-logo">Lens<span>AI</span></div>
+          <div className="sidebar-tagline">AI-powered article search</div>
+        </div>
+
+        {/* API Key */}
+        <div className="sidebar-section">
+          <div className="section-label">Anthropic API Key</div>
+          <input
+            className="api-key-input"
+            type="password"
+            placeholder="sk-ant-..."
+            value={apiKey}
+            onChange={e => { setApiKey(e.target.value); setApiKeyValid(null); }}
+          />
+          {apiKeyValid === true && <div className="api-key-status valid">✓ Connected</div>}
+          {apiKeyValid === false && <div className="api-key-status invalid">✗ Invalid key</div>}
+          <div className="api-key-hint">Required to process queries.</div>
+        </div>
+
+        {/* Quick ranges */}
+        <div className="sidebar-section">
+          <div className="section-label">Quick Range</div>
+          <div className="quick-ranges">
+            {[['24h', 1], ['7d', 7], ['30d', 30], ['3m', 90], ['1y', 365]].map(([label, days]) => (
+              <button
+                key={label}
+                className={`range-btn ${filters.activeRange === label ? 'active' : ''}`}
+                onClick={() => setQuickRange(days, label)}
+              >{label}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Custom date range */}
+        <div className="sidebar-section">
+          <div className="section-label">Custom Range</div>
+          <div className="date-group">
+            <div>
+              <div className="date-label">From</div>
+              <input type="date" className="date-input" value={filters.dateFrom} onChange={e => setFilters(f => ({ ...f, dateFrom: e.target.value, activeRange: '' }))} />
+            </div>
+            <div>
+              <div className="date-label">To</div>
+              <input type="date" className="date-input" value={filters.dateTo} onChange={e => setFilters(f => ({ ...f, dateTo: e.target.value, activeRange: '' }))} />
+            </div>
+          </div>
+        </div>
+
+        {/* Sort */}
+        <div className="sidebar-section">
+          <div className="section-label">Sort By</div>
+          <select className="select-input" value={filters.sort} onChange={e => setFilters(f => ({ ...f, sort: e.target.value }))}>
+            <option value="newest">Newest First</option>
+            <option value="oldest">Oldest First</option>
+            <option value="relevance">Relevance</option>
+          </select>
+        </div>
+
+        {/* Max results */}
+        <div className="sidebar-section">
+          <div className="section-label">Max Results</div>
+          <select className="select-input" value={filters.maxResults} onChange={e => setFilters(f => ({ ...f, maxResults: +e.target.value }))}>
+            <option value={5}>5 articles</option>
+            <option value={10}>10 articles</option>
+            <option value={20}>20 articles</option>
+          </select>
+        </div>
+      </aside>
+
+      {/* ── Main ── */}
+      <main className="main">
+        <div className="chat-area">
+          <div className="chat-messages">
+            {chatHistory.length === 0 && !loading && (
+              <div className="welcome">
+                <div className="welcome-icon">📰</div>
+                <div className="welcome-title">Article Search Agent</div>
+                <div className="welcome-sub">Ask in natural language — find articles from Google News with AI-powered query understanding, date resolution, and Boolean logic.</div>
+                <div className="chips">
+                  {CHIPS.map(chip => (
+                    <button key={chip} className="chip" onClick={() => { setInputValue(chip); textareaRef.current?.focus(); }}>{chip}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {chatHistory.map((msg, i) => (
+              <div key={i} className={`message ${msg.role}`}>
+                <div className="message-avatar">{msg.role === 'user' ? 'U' : '🔍'}</div>
+                <div className="message-content">
+                  {msg.content.split('**').map((part, j) => j % 2 === 1 ? <strong key={j}>{part}</strong> : part)}
+                </div>
+              </div>
+            ))}
+
+            {loading && (
+              <div className="message assistant">
+                <div className="message-avatar">🔍</div>
+                <div className="message-content">
+                  <div className="dots"><div className="dot"/><div className="dot"/><div className="dot"/></div>
+                  &nbsp;Searching articles…
+                </div>
+              </div>
+            )}
+
+            {errorMsg && <div className="error-msg">{errorMsg}</div>}
+
+            {/* Skeleton cards inside scroll area */}
+            {loading && (
+              <div className="results-section">
+                {[1,2,3].map(n => <SkeletonCard key={n} />)}
+              </div>
+            )}
+
+            {/* Article results inside scroll area — all cards visible with scroll */}
+            {!loading && articles.length > 0 && (
+              <div className="results-section">
+                <div className="results-header">
+                  <div className="results-title">Results</div>
+                  <div className="results-count">{articles.length} article{articles.length !== 1 ? 's' : ''} found</div>
+                </div>
+                {articles.map((a, i) => <ArticleCard key={i} article={a} />)}
+              </div>
+            )}
+
+            <div ref={chatEndRef} />
+          </div>
+        </div>
+
+        {/* Export bar */}
+        {articles.length > 0 && !loading && (
+          <ExportBar articles={articles} query={lastQuery} />
+        )}
+
+        {/* Chat input */}
+        <div className="chat-input-area">
+          <div className="chat-input-row">
+            <textarea
+              ref={textareaRef}
+              className="chat-textarea"
+              rows={1}
+              placeholder='Search news… e.g. "Tata Motors earnings last week" or "Apple AND Samsung 2024"'
+              value={inputValue}
+              onChange={e => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+            />
+            <button className="send-btn" onClick={handleSubmit} disabled={loading || !inputValue.trim()}>
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 16L10 4l6 12M7 11h6"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

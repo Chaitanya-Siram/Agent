@@ -17,14 +17,32 @@
 
 window.NEWS_SOURCES = [
 
-  // ── Google News (India) ────────────────────────────────────────────────────
-  // {
-  //   id:      'google-news-in',
-  //   name:    'Google News (India)',
-  //   enabled: true,
-  //   buildUrl: keywords =>
-  //     `https://news.google.com/rss/search?q=${encodeURIComponent(keywords)}&hl=en-IN&gl=IN&ceid=IN:en`,
-  // },
+  // ── Google News (India) ───────────────────────────────────────────────────
+  {
+    id:      'google-news-in',
+    name:    'Google News (India)',
+    enabled: true,
+    buildUrl: keywords =>
+      `https://news.google.com/rss/search?q=${encodeURIComponent(keywords)}&hl=en-IN&gl=IN&ceid=IN:en`,
+  },
+
+  // ── Google News (Australia) ───────────────────────────────────────────────
+  {
+    id:      'google-news-au',
+    name:    'Google News (Australia)',
+    enabled: true,
+    buildUrl: keywords =>
+      `https://news.google.com/rss/search?q=${encodeURIComponent(keywords)}&hl=en-AU&gl=AU&ceid=AU:en`,
+  },
+
+  // ── Google News (Canada) ──────────────────────────────────────────────────
+  {
+    id:      'google-news-ca',
+    name:    'Google News (Canada)',
+    enabled: true,
+    buildUrl: keywords =>
+      `https://news.google.com/rss/search?q=${encodeURIComponent(keywords)}&hl=en-CA&gl=CA&ceid=CA:en`,
+  },
 
   // ── Google News (US) ──────────────────────────────────────────────────────
   {
@@ -36,12 +54,39 @@ window.NEWS_SOURCES = [
   },
 
   // ── Google News (UK) ──────────────────────────────────────────────────────
+  {
+    id:      'google-news-uk',
+    name:    'Google News (UK)',
+    enabled: true,
+    buildUrl: keywords =>
+      `https://news.google.com/rss/search?q=${encodeURIComponent(keywords)}&hl=en-GB&gl=GB&ceid=GB:en`,
+  },
+
+  // ── Google News (Germany) ─────────────────────────────────────────────────
+  {
+    id:      'google-news-de',
+    name:    'Google News (Germany)',
+    enabled: true,
+    buildUrl: keywords =>
+      `https://news.google.com/rss/search?q=${encodeURIComponent(keywords)}&hl=en&gl=DE&ceid=DE:en`,
+  },
+
+  // ── Google News (France) ──────────────────────────────────────────────────
+  {
+    id:      'google-news-fr',
+    name:    'Google News (France)',
+    enabled: true,
+    buildUrl: keywords =>
+      `https://news.google.com/rss/search?q=${encodeURIComponent(keywords)}&hl=en&gl=FR&ceid=FR:en`,
+  },
+
+  // ── Google News (India) — enable for India-specific queries ───────────────
   // {
-  //   id:      'google-news-uk',
-  //   name:    'Google News (UK)',
+  //   id:      'google-news-in',
+  //   name:    'Google News (India)',
   //   enabled: false,
   //   buildUrl: keywords =>
-  //     `https://news.google.com/rss/search?q=${encodeURIComponent(keywords)}&hl=en-GB&gl=GB&ceid=GB:en`,
+  //     `https://news.google.com/rss/search?q=${encodeURIComponent(keywords)}&hl=en-IN&gl=IN&ceid=IN:en`,
   // },
 
   // ── Bing News ─────────────────────────────────────────────────────────────

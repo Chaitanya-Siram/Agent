@@ -1,16 +1,6 @@
-# Python
+test-*.png
+.playwright-mcp/
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-*.env
-
-# Vercel
-.vercel/
-
-# OS
 .DS_Store
-Thumbs.db
-
-# Logs
-*.log
+node_modules/

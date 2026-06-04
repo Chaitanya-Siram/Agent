@@ -1,77 +1,6 @@
 const { useState, useEffect, useRef, useCallback } = React;
 
-// ─── Anthropic API call ────────────────────────────────────────────────────────
-
-async function extractSearchParams(query, apiKey) {
-  const cfg    = window.AGENT_CONFIG;
-  const today  = new Date().toISOString().slice(0, 10);
-
-  const systemPrompt =
-    cfg.systemPromptBase.replace('{TODAY}', today) +
-    '\n\nAdditional instructions:\n' +
-    cfg.instructions.map((rule, i) => `${i + 1}. ${rule}`).join('\n');
-
-  const res = await fetch('/proxy/anthropic', {
-    method: 'POST',
-    headers: {
-      'Content-Type':      'application/json',
-      'x-api-key':         apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model:      cfg.model,
-      max_tokens: cfg.maxTokens,
-      system:     systemPrompt,
-      messages: [{
-        role:    'user',
-        content: `Extract search parameters from this query: "${query}"\n\nReturn ONLY the JSON object, no explanation.`,
-      }],
-    }),
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `API error ${res.status}`);
-  }
-
-  const data  = await res.json();
-  const text  = data.content?.[0]?.text || '';
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('Could not parse AI response');
-  return JSON.parse(match[0]);
-}
-
-// ─── News RSS fetch — pulls from all enabled sources in sources.js ────────────
-
-async function fetchFromSource(source, keywords) {
-  const url = source.buildUrl(keywords);
-  const res = await fetch(`/proxy/rss?url=${encodeURIComponent(url)}`);
-  if (!res.ok) throw new Error(`${source.name}: HTTP ${res.status}`);
-  return parseRSS(await res.text());
-}
-
-async function fetchNews(keywords) {
-  const sources = (window.NEWS_SOURCES || []).filter(s => s.enabled);
-  if (sources.length === 0)
-    throw new Error('No news sources enabled. Enable at least one source in src/sources.js.');
-
-  const results = await Promise.all(
-    sources.map(s => fetchFromSource(s, keywords).catch(err => {
-      console.warn(`[LensAI] Source "${s.name}" failed:`, err.message);
-      return [];
-    }))
-  );
-
-  // Merge results from all sources, deduplicate by URL
-  const seen = new Set();
-  return results.flat().filter(a => {
-    if (!a.link || seen.has(a.link)) return false;
-    seen.add(a.link);
-    return true;
-  });
-}
-
-// ─── Render message with **bold** and \n line breaks ──────────────────────────
+// ─── Render message text ───────────────────────────────────────────────────────
 
 function MessageContent({ text }) {
   return (
@@ -88,90 +17,197 @@ function MessageContent({ text }) {
   );
 }
 
+// ─── Sentiment tagger ─────────────────────────────────────────────────────────
+
+async function tagArticlesSentiment(articles, apiKey, model) {
+  const items = articles.map((a, i) =>
+    `${i}. TITLE: ${a.title}\n   SOURCE: ${a.source}\n   SUMMARY: ${(a.description || '').slice(0, 200)}`
+  ).join('\n\n');
+
+  const system = `You are a news sentiment analyst. For each article, classify sentiment as positive, negative, neutral, or mixed.
+Return ONLY valid JSON array, no markdown:
+[{"index":0,"sentiment":"positive","confidence":0.92,"reason":"Brief 1-sentence reason"}]
+Rules:
+- confidence: 0.0–1.0
+- reason: max 80 chars, factual
+- sentiment: positive|negative|neutral|mixed`;
+
+  const res = await fetch('/proxy/anthropic', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({
+      model: model || 'claude-haiku-4-5-20251001',
+      max_tokens: 4000,
+      system,
+      messages: [{ role: 'user', content: `Tag sentiment for these ${articles.length} articles:\n\n${items}` }],
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `API error ${res.status}`);
+  }
+  const data = await res.json();
+  const text = data.content?.[0]?.text || '';
+  const match = text.match(/\[[\s\S]*\]/);
+  if (!match) throw new Error('Could not parse sentiment response');
+  return JSON.parse(match[0]);
+}
+
 // ─── Main App ──────────────────────────────────────────────────────────────────
 
 function App() {
   const cfg = window.AGENT_CONFIG;
 
-  const FILTER_DEFAULTS = {
-    dateFrom: '', dateTo: '',
-    sort:        cfg.defaults.sort,
-    maxResults:  cfg.defaults.maxResults,
-    activeRange: '',
-  };
+  // ── API Key ──
+  const [apiKey,      setApiKey]      = useState(() => localStorage.getItem('lensai_api_key') || '');
+  const [apiKeyValid, setApiKeyValid] = useState(null);
 
-  const [apiKey,          setApiKey]          = useState('');
-  const [apiKeyValid,     setApiKeyValid]      = useState(null);
-  const [filters,         setFilters]          = useState(FILTER_DEFAULTS); // applied filters (used in search)
-  const [pendingFilters,  setPendingFilters]   = useState(FILTER_DEFAULTS); // staging area (sidebar UI)
-  const [chatHistory,     setChatHistory]      = useState([]);
-  const [articles,        setArticles]         = useState([]);
-  const [loading,         setLoading]          = useState(false);
-  const [inputValue,      setInputValue]       = useState('');
-  const [lastQuery,       setLastQuery]        = useState('');
-  const [errorMsg,        setErrorMsg]         = useState('');
+  // ── Conversation tabs ──
+  const [tabs,       setTabs]       = useState([{ id: 1, name: 'Chat 1' }]);
+  const [activeTab,  setActiveTab]  = useState(1);
+  const [nextTabId,  setNextTabId]  = useState(2);
+  const [histories,  setHistories]  = useState({ 1: [] });
+  const [workingMems, setWorkingMems] = useState({ 1: null });
+  const [lastQueries, setLastQueries] = useState({ 1: '' });
+
+  const chatHistory  = histories[activeTab]  || [];
+  const workingMem   = workingMems[activeTab] || null;
+  const lastQuery    = lastQueries[activeTab] || '';
+
+  const setChatHistory = useCallback((updater) => {
+    setHistories(h => ({ ...h, [activeTab]: typeof updater === 'function' ? updater(h[activeTab] || []) : updater }));
+  }, [activeTab]);
+
+  const setWorkingMem = useCallback((v) => {
+    setWorkingMems(m => ({ ...m, [activeTab]: v }));
+  }, [activeTab]);
+
+  const setLastQuery = useCallback((v) => {
+    setLastQueries(q => ({ ...q, [activeTab]: v }));
+  }, [activeTab]);
+
+  // ── Global loading state ──
+  const [loading,       setLoading]       = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState('');
+  const [inputValue,    setInputValue]    = useState('');
+  const [errorMsg,      setErrorMsg]      = useState('');
 
   const chatEndRef  = useRef(null);
   const textareaRef = useRef(null);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatHistory, loading, articles]);
+  }, [chatHistory, loading]);
 
-  // pendingFilters has unsaved changes if it differs from applied filters
-  const hasPendingChanges = JSON.stringify(pendingFilters) !== JSON.stringify(filters);
-
-  const applyFilters = () => setFilters({ ...pendingFilters });
-
-  const resetFilters = () => {
-    setPendingFilters(FILTER_DEFAULTS);
-    setFilters(FILTER_DEFAULTS);
+  // ── Tab management ──
+  const newTab = () => {
+    const id = nextTabId;
+    setNextTabId(n => n + 1);
+    setTabs(t => [...t, { id, name: 'New Chat' }]);
+    setHistories(h => ({ ...h, [id]: [] }));
+    setWorkingMems(m => ({ ...m, [id]: null }));
+    setLastQueries(q => ({ ...q, [id]: '' }));
+    setActiveTab(id);
+    setInputValue('');
   };
 
-  const setQuickRange = (days, label) => {
-    const { dateFrom, dateTo } = applyQuickRange(days);
-    setPendingFilters(f => ({ ...f, dateFrom, dateTo, activeRange: label }));
+  const closeTab = (id, e) => {
+    e.stopPropagation();
+    if (tabs.length === 1) return;
+    const remaining = tabs.filter(t => t.id !== id);
+    setTabs(remaining);
+    if (activeTab === id) setActiveTab(remaining[remaining.length - 1].id);
   };
 
-  // ── Core search pipeline ─────────────────────────────────────────────────────
+  const renameTab = (id, name) => {
+    setTabs(t => t.map(tab => tab.id === id ? { ...tab, name } : tab));
+  };
+
+  // ── Working memory ──
+  const refreshWorkingMem = useCallback(() => {
+    if (window.CONTEXT_MEMORY) {
+      const wm = window.CONTEXT_MEMORY.getWorkingMemory();
+      setWorkingMem(wm.isEmpty() ? null : wm.toJSON());
+    }
+  }, [setWorkingMem]);
+
+  // ── Core search pipeline ──
   const handleSearch = useCallback(async (query) => {
     setErrorMsg('');
     setLoading(true);
+    setLoadingStatus('Analyzing your request…');
     setLastQuery(query);
-    setArticles([]);
+
+    // Auto-name the tab from first query
+    setTabs(t => t.map(tab => tab.id === activeTab && tab.name === 'New Chat'
+      ? { ...tab, name: query.slice(0, 28) + (query.length > 28 ? '…' : '') }
+      : tab
+    ));
 
     try {
-      const params = await extractSearchParams(query, apiKey.trim());
+      const result = await window.ORCHESTRATOR.run(query, apiKey.trim(), {}, {
+        onStatus: msg => setLoadingStatus(msg),
+        onAgentEvent: evt => {
+          if (evt.event === 'attempt')  setLoadingStatus(`${evt.agent} working… (pass ${evt.attempt})`);
+          if (evt.event === 'heal')     setLoadingStatus(`${evt.agent} self-healing…`);
+          if (evt.event === 'retry')    setLoadingStatus(`${evt.agent} retrying…`);
+          if (evt.event === 'step' && evt.message) setLoadingStatus(evt.message);
 
-      const dateFrom = params.date_from || filters.dateFrom || null;
-      const dateTo   = params.date_to   || filters.dateTo   || null;
-
-      let results = await fetchNews(params.keywords || query);
-
-      // Date filter — compare YYYY-MM-DD strings directly to avoid timezone issues
-      results = results.filter(a => {
-        if (!a.pubDateISO) return true;
-        const articleDate = a.pubDateISO.slice(0, 10); // "YYYY-MM-DD"
-        if (dateFrom && articleDate < dateFrom) return false;
-        if (dateTo   && articleDate > dateTo)   return false;
-        return true;
+          if (evt.event === 'contextResolved') {
+            setChatHistory(h => [...h, {
+              role: 'system-note',
+              content: `🧠 Context resolved: _"${evt.original}"_ → _"${(evt.resolved || '').slice(0, 100)}"_`,
+            }]);
+          }
+          if (evt.event === 'queryGenerated') {
+            const { booleanQuery, dateFrom, dateTo } = evt;
+            const dr = (dateFrom || dateTo) ? ` · ${dateFrom || '…'} → ${dateTo || 'now'}` : '';
+            setChatHistory(h => [...h, { role: 'system-note', content: `🔍 Boolean query: \`${booleanQuery}\`${dr}` }]);
+            setLoadingStatus(`Searching: ${booleanQuery}`);
+          }
+          if (evt.event === 'articlesFetched') setLoadingStatus(`Fetched ${evt.count} articles…`);
+          if (evt.event === 'sentimentComplete') setLoadingStatus(`Sentiment mapped: ${evt.articlesAnalyzed} articles → ${evt.regionsFound} regions`);
+        },
       });
 
-      // Sort
-      if (filters.sort === 'newest')
-        results.sort((a, b) => new Date(b.pubDateISO || 0) - new Date(a.pubDateISO || 0));
-      else if (filters.sort === 'oldest')
-        results.sort((a, b) => new Date(a.pubDateISO || 0) - new Date(b.pubDateISO || 0));
-
-      const final    = results.slice(0, filters.maxResults);
-      const dateInfo = dateFrom || dateTo ? ` (${dateFrom || '…'} → ${dateTo || 'now'})` : '';
-      const reply    = final.length > 0
-        ? `Found **${final.length}** articles for "${params.keywords}"${dateInfo}. ${params.intent || ''}`
-        : `No articles found for "${params.keywords}"${dateInfo}. Try a broader query or wider date range.`;
-
-      setArticles(final);
       setApiKeyValid(true);
-      setChatHistory(h => [...h, { role: 'assistant', content: reply }]);
+
+      if (result.type === 'articles') {
+        // Push article result INTO chatHistory so it persists across queries
+        setChatHistory(h => [...h,
+          { role: 'assistant', content: result.message },
+          { role: 'article-result', articles: result.articles, query, id: Date.now() },
+        ]);
+        if (window.CONTEXT_MEMORY) {
+          window.CONTEXT_MEMORY.record('assistant', result.message, {
+            artifact: 'articles',
+            articleDataset: { count: result.articles.length, keywords: query, fetchedAt: Date.now() },
+          });
+          window.CONTEXT_MEMORY.summarize(apiKey.trim()).catch(() => {});
+        }
+      } else if (result.type === 'chart') {
+        setChatHistory(h => [...h, { role: 'chart', html: result.html, query }]);
+        if (window.CONTEXT_MEMORY) window.CONTEXT_MEMORY.record('assistant', result.message, { artifact: 'chart' });
+      } else if (result.type === 'queryintel') {
+        setChatHistory(h => [...h,
+          { role: 'queryintel', result: result.result, query },
+          { role: 'assistant', content: result.message },
+        ]);
+        if (window.CONTEXT_MEMORY) {
+          const r = result.result;
+          window.CONTEXT_MEMORY.record('assistant', result.message, {
+            artifact: 'boolean_query', queryId: 'q_' + Date.now(),
+            brands: r.entities?.brands || [], geography: r.entities?.locations || [],
+            industry: r.industry, topics: r.entities?.topics || [],
+            intents: r.intent, action: 'media_intel', booleanQuery: r.balanced_query,
+          });
+        }
+      } else {
+        setChatHistory(h => [...h, { role: 'assistant', content: result.message || 'Done.' }]);
+      }
+
+      refreshWorkingMem();
     } catch (err) {
       const msg = err.message || 'Something went wrong.';
       setErrorMsg(msg);
@@ -179,25 +215,25 @@ function App() {
       if (msg.includes('401') || msg.includes('API key')) setApiKeyValid(false);
     } finally {
       setLoading(false);
+      setLoadingStatus('');
     }
-  }, [apiKey, filters]);
+  }, [apiKey, activeTab, setChatHistory, setLastQuery, refreshWorkingMem]);
 
-  // ── Chat handler — checks conversational intent before searching ──────────────
+  // ── Chat handler ──
   const handleChat = useCallback((query) => {
     if (!query.trim()) return;
-
     const lower = query.toLowerCase().trim();
-    const p     = cfg.conversationalPatterns;
+    const p = cfg.conversationalPatterns;
 
-    // Clear chat: wipe everything and return to welcome screen — no history entry added
     if (p.clearChat && p.clearChat.test(lower)) {
       setChatHistory([]);
-      setArticles([]);
       setErrorMsg('');
-      setLastQuery('');
+      if (window.CONTEXT_MEMORY) window.CONTEXT_MEMORY.clear();
+      setWorkingMem(null);
       return;
     }
 
+    if (window.CONTEXT_MEMORY) window.CONTEXT_MEMORY.record('user', query);
     setChatHistory(h => [...h, { role: 'user', content: query }]);
     const respond = key => setChatHistory(h => [...h, { role: 'assistant', content: resolveResponse(key) }]);
 
@@ -207,11 +243,10 @@ function App() {
     if (p.goodbye.test(lower))   { respond('goodbye');   return; }
     if (p.help.test(lower))      { respond('help');      return; }
     if (p.casual.test(lower))    { respond('fallback');  return; }
-
-    if (!apiKey.trim()) { respond('noApiKey'); return; }
+    if (!apiKey.trim())          { respond('noApiKey');  return; }
 
     handleSearch(query);
-  }, [apiKey, handleSearch]);
+  }, [apiKey, handleSearch, setChatHistory, setWorkingMem]);
 
   const handleSubmit = () => {
     const q = inputValue.trim();
@@ -224,7 +259,8 @@ function App() {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); }
   };
 
-  // ── Render ───────────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────
+
   return (
     <div className="app">
 
@@ -237,79 +273,79 @@ function App() {
           <div className="sidebar-tagline">{cfg.tagline}</div>
         </div>
 
+        {/* API Key */}
         <div className="sidebar-section">
           <div className="section-label">Anthropic API Key</div>
           <input className="api-key-input" type="password" placeholder="sk-ant-…"
-            value={apiKey} onChange={e => { setApiKey(e.target.value); setApiKeyValid(null); }} />
+            value={apiKey} onChange={e => {
+              const k = e.target.value;
+              setApiKey(k); setApiKeyValid(null);
+              if (k) localStorage.setItem('lensai_api_key', k);
+              else   localStorage.removeItem('lensai_api_key');
+            }} />
           {apiKeyValid === true  && <div className="api-key-status valid">✓ Connected</div>}
           {apiKeyValid === false && <div className="api-key-status invalid">✗ Invalid key</div>}
           <div className="api-key-hint">Required to process queries.</div>
         </div>
 
-        <div className="sidebar-section">
-          <div className="section-label">Quick Range</div>
-          <div className="quick-ranges">
-            {[['24h',1],['7d',7],['30d',30],['3m',90],['1y',365]].map(([label, days]) => (
-              <button key={label}
-                className={`range-btn ${pendingFilters.activeRange === label ? 'active' : ''}`}
-                onClick={() => setQuickRange(days, label)}>{label}</button>
+        {/* Working Memory */}
+        {workingMem && (
+          <div className="sidebar-section" style={{ background: 'rgba(55,138,221,0.04)' }}>
+            <div className="section-label" style={{ color: 'var(--accent)' }}>🧠 Active Memory</div>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.75 }}>
+              {workingMem.currentBrand && <div><span style={{ color:'var(--text-muted)' }}>Brand: </span><strong>{workingMem.currentBrand}</strong></div>}
+              {workingMem.geography?.length > 0 && <div><span style={{ color:'var(--text-muted)' }}>Geo: </span>{workingMem.geography.join(', ')}</div>}
+              {workingMem.timeRange && <div><span style={{ color:'var(--text-muted)' }}>Time: </span>{workingMem.timeRange}</div>}
+              {workingMem.currentDataset && <div><span style={{ color:'var(--text-muted)' }}>Dataset: </span>{workingMem.currentDataset.count} articles</div>}
+              {workingMem.generatedArtifacts?.length > 0 && <div><span style={{ color:'var(--text-muted)' }}>Generated: </span>{workingMem.generatedArtifacts.join(', ')}</div>}
+              {workingMem.topics?.length > 0 && (
+                <div style={{ marginTop: 3, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {workingMem.topics.slice(0, 4).map(t => (
+                    <span key={t} style={{ background:'var(--badge-bg)', padding:'1px 6px', borderRadius:8, fontSize:10 }}>{t}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Agent registry */}
+        <div className="sidebar-section" style={{ marginTop: 'auto' }}>
+          <div className="section-label">Agents</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.7 }}>
+            {(window.ORCHESTRATOR?.listAgents() || []).map(a => (
+              <div key={a.name} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span style={{ width:6, height:6, borderRadius:'50%', background:'var(--accent)', display:'inline-block', flexShrink:0 }} />
+                {a.name}
+              </div>
             ))}
           </div>
-        </div>
-
-        <div className="sidebar-section">
-          <div className="section-label">Custom Range</div>
-          <div className="date-group">
-            <div>
-              <div className="date-label">From</div>
-              <input type="date" className="date-input" value={pendingFilters.dateFrom}
-                onChange={e => setPendingFilters(f => ({ ...f, dateFrom: e.target.value, activeRange: '' }))} />
-            </div>
-            <div>
-              <div className="date-label">To</div>
-              <input type="date" className="date-input" value={pendingFilters.dateTo}
-                onChange={e => setPendingFilters(f => ({ ...f, dateTo: e.target.value, activeRange: '' }))} />
-            </div>
-          </div>
-        </div>
-
-        <div className="sidebar-section">
-          <div className="section-label">Sort By</div>
-          <select className="select-input" value={pendingFilters.sort}
-            onChange={e => setPendingFilters(f => ({ ...f, sort: e.target.value }))}>
-            <option value="newest">Newest First</option>
-            <option value="oldest">Oldest First</option>
-            <option value="relevance">Relevance</option>
-          </select>
-        </div>
-
-        <div className="sidebar-section">
-          <div className="section-label">Max Results</div>
-          <select className="select-input" value={pendingFilters.maxResults}
-            onChange={e => setPendingFilters(f => ({ ...f, maxResults: +e.target.value }))}>
-            <option value={5}>5 articles</option>
-            <option value={10}>10 articles</option>
-            <option value={20}>20 articles</option>
-          </select>
-        </div>
-
-        {/* ── Apply / Reset filter bar ── */}
-        <div className="sidebar-section filter-actions">
-          <button
-            className={`apply-btn ${hasPendingChanges ? 'has-changes' : ''}`}
-            onClick={applyFilters}
-            disabled={!hasPendingChanges}
-          >
-            {hasPendingChanges ? '● Apply Filters' : 'Filters Applied'}
-          </button>
-          <button className="reset-btn" onClick={resetFilters} title="Reset all filters to defaults">
-            Reset
-          </button>
         </div>
       </aside>
 
       {/* ── Main ── */}
       <main className="main">
+
+        {/* ── Tab bar ── */}
+        <div className="tab-bar">
+          <div className="tab-list">
+            {tabs.map(tab => (
+              <button
+                key={tab.id}
+                className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
+                onClick={() => setActiveTab(tab.id)}
+                title={tab.name}
+              >
+                <span className="tab-name">{tab.name}</span>
+                {tabs.length > 1 && (
+                  <span className="tab-close" onClick={e => closeTab(tab.id, e)}>×</span>
+                )}
+              </button>
+            ))}
+          </div>
+          <button className="tab-new-btn" onClick={newTab} title="New conversation">＋</button>
+        </div>
+
         <div className="chat-area">
           <div className="chat-messages">
 
@@ -327,20 +363,81 @@ function App() {
                     </button>
                   ))}
                 </div>
+                <div className="chips" style={{ marginTop: 8 }}>
+                  {[
+                    'Show a bar chart of top tech companies',
+                    'Line chart of AI funding trends 2023',
+                    'Pie chart of smartphone market share',
+                  ].map(chip => (
+                    <button key={chip} className="chip" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}
+                      onClick={() => { setInputValue(chip); textareaRef.current?.focus(); }}>
+                      📊 {chip}
+                    </button>
+                  ))}
+                </div>
+                <div className="chips" style={{ marginTop: 6 }}>
+                  {[
+                    'Track Tesla EV coverage across India for the last 72 hours. I want expansion, pricing, and Gigafactory angles.',
+                    'Monitor T-Mobile and AT&T competitive activity in the US.',
+                    'Track funding announcements from AI startups in Europe.',
+                  ].map(chip => (
+                    <button key={chip} className="chip"
+                      style={{ borderColor: '#7F77DD', color: '#5A50B0', fontSize: 11 }}
+                      onClick={() => { setInputValue(chip); textareaRef.current?.focus(); }}>
+                      🧠 {chip.slice(0, 45)}…
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
             {/* Chat messages */}
-            {chatHistory.map((msg, i) => (
-              <div key={i} className={`message ${msg.role}`}>
-                <div className="message-avatar">{msg.role === 'user' ? 'U' : '🔍'}</div>
-                <div className="message-content">
-                  <MessageContent text={msg.content} />
+            {chatHistory.map((msg, i) => {
+              if (msg.role === 'chart') {
+                return <ChartFrame key={i} html={msg.html} query={msg.query} apiKey={apiKey} />;
+              }
+              if (msg.role === 'article-result') {
+                return (
+                  <ArticleResultBlock
+                    key={msg.id || i}
+                    articles={msg.articles}
+                    query={msg.query}
+                    apiKey={apiKey}
+                    model={cfg.model}
+                  />
+                );
+              }
+              if (msg.role === 'queryintel') {
+                return (
+                  <QueryIntelCard key={i} result={msg.result}
+                    onSearchQuery={(selectedQuery) => {
+                      setInputValue('');
+                      setChatHistory(h => [...h, { role: 'user', content: `Search: ${selectedQuery.slice(0, 80)}…` }]);
+                      handleSearch(selectedQuery);
+                    }}
+                  />
+                );
+              }
+              if (msg.role === 'system-note') {
+                return (
+                  <div key={i} style={{
+                    fontSize: 11, color: 'var(--text-muted)', background: 'var(--badge-bg)',
+                    borderRadius: 6, padding: '5px 10px', display: 'flex', alignItems: 'center',
+                    gap: 6, alignSelf: 'flex-start', maxWidth: '90%',
+                  }}>
+                    <MessageContent text={msg.content} />
+                  </div>
+                );
+              }
+              return (
+                <div key={i} className={`message ${msg.role}`}>
+                  <div className="message-avatar">{msg.role === 'user' ? 'U' : '🔍'}</div>
+                  <div className="message-content"><MessageContent text={msg.content} /></div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
-            {/* Typing indicator */}
+            {/* Loading */}
             {loading && (
               <div className="message assistant">
                 <div className="message-avatar">🔍</div>
@@ -348,30 +445,17 @@ function App() {
                   <div className="dots">
                     <div className="dot"/><div className="dot"/><div className="dot"/>
                   </div>
-                  &nbsp;Searching articles…
+                  &nbsp;{loadingStatus || 'Working…'}
+                  <AgentStatusBadge status={loadingStatus} />
                 </div>
               </div>
             )}
 
             {errorMsg && <div className="error-msg">{errorMsg}</div>}
 
-            {/* Skeleton cards while loading */}
             {loading && (
               <div className="results-section">
                 {[1,2,3].map(n => <SkeletonCard key={n} />)}
-              </div>
-            )}
-
-            {/* Article results — inside scroll area so all cards are reachable */}
-            {!loading && articles.length > 0 && (
-              <div className="results-section">
-                <div className="results-header">
-                  <div className="results-title">Results</div>
-                  <div className="results-count">
-                    {articles.length} article{articles.length !== 1 ? 's' : ''} found
-                  </div>
-                </div>
-                {articles.map((a, i) => <ArticleCard key={i} article={a} />)}
               </div>
             )}
 
@@ -379,14 +463,14 @@ function App() {
           </div>
         </div>
 
-        {/* Export bar */}
-        {articles.length > 0 && !loading && <ExportBar articles={articles} query={lastQuery} />}
-
         {/* Chat input */}
         <div className="chat-input-area">
           <div className="chat-input-row">
             <textarea ref={textareaRef} className="chat-textarea" rows={1}
-              placeholder='Search news… or just say hi!'
+              placeholder={workingMem
+                ? `Context active: ${workingMem.currentBrand || ''}${workingMem.geography?.length ? ' · ' + workingMem.geography[0] : ''}${workingMem.timeRange ? ' · ' + workingMem.timeRange : ''} — just say "show charts" or "more details"`
+                : 'Track Tesla in India 72h · Monitor brand sentiment · Show AI funding chart…'
+              }
               value={inputValue}
               onChange={e => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown} />

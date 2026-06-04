@@ -21,21 +21,35 @@
 <body>
   <div id="root"></div>
 
-  <!-- Load order matters: config → utils → components → app -->
+  <!-- Load order matters: config → agents → utils → components → app -->
 
-  <!-- 1. Agent configuration — edit agent/agent.config.js to change behaviour -->
+  <!-- 1. Agent configuration -->
   <script src="/agent/agent.config.js"></script>
 
-  <!-- 2. News sources — edit src/sources.js to add or enable more sources -->
+  <!-- 2. News sources -->
   <script src="/src/sources.js"></script>
 
-  <!-- 3. Utility functions (date, RSS parser, export helpers) -->
+  <!-- 3. Multi-agent system (load in dependency order) -->
+  <script src="/agent/memory.js"></script>
+  <script src="/agent/base-agent.js"></script>
+  <script src="/agent/visualization-agent.js"></script>
+  <script src="/agent/code-agent.js"></script>
+  <script src="/agent/tools-agent.js"></script>
+  <script src="/agent/media-intelligence-agent.js"></script>
+  <script src="/agent/orchestrator.js"></script>
+
+  <!-- 3b. Context-Aware Conversation Memory System (8 components) -->
+  <script src="/agent/memory/session-memory.js"></script>
+  <script src="/agent/memory/context-engine.js"></script>
+  <script src="/agent/context-memory.js"></script>
+
+  <!-- 4. Utility functions (date, RSS parser, export helpers) -->
   <script src="/src/utils.js"></script>
 
-  <!-- 4. React UI components (ArticleCard, ExportBar, etc.) -->
+  <!-- 5. React UI components (ArticleCard, ChartFrame, ExportBar, etc.) -->
   <script type="text/babel" src="/src/components.jsx"></script>
 
-  <!-- 5. Main application logic + chat handler -->
+  <!-- 6. Main application logic + chat handler -->
   <script type="text/babel" src="/src/app.jsx"></script>
 </body>
 </html>

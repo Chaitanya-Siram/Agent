@@ -36,14 +36,18 @@ window.AGENT_CONFIG = {
   //    "Prefer government and official sources for policy news"
   //
   instructions: [
-    "Focus on credible and established news sources",
-    "Prefer recent results unless the user specifies a different time range",
-    "When the query mentions India or Indian companies, prioritise Indian news sources (ET, Mint, Hindu, Livemint, NDTV, ANI)",
-    "For financial news, include earnings reports, market data, and analyst opinions in keywords",
-    "Expand important acronyms inline — e.g. 'EV' becomes 'electric vehicle EV'",
-    "For tech news, include product names and version numbers when mentioned",
+    // ── Geography rule (most important — never put country/region in the query) ──
+    "CRITICAL: Never include country names, region names, or geographic terms in the Boolean query. Geographic targeting is handled by the RSS source's gl= parameter. Maximum article volume requires keeping geography OUT of the search string.",
+
+    // ── Brand & topic rules ────────────────────────────────────────────────────
+    "Anchor ambiguous brand names with product terms to avoid noise (Apple → add iPhone OR Mac OR iPad; Google → add Android OR Search OR Chrome)",
+    "For brand reputation or perception queries, include: (brand OR reputation OR perception OR sales OR customer OR review OR market)",
+    "For financial news, include: (earnings OR revenue OR profit OR 'market share' OR growth OR analyst)",
+    "For risk or regulatory queries, include: (fine OR lawsuit OR regulation OR ban OR antitrust OR investigation OR crisis)",
+    "Expand important acronyms inline — 'EV' becomes 'electric vehicle EV'",
+    "For tech brands, include product names and version numbers when mentioned",
     "Do not add site-specific filters (site:...) unless the user explicitly asks",
-    "When Boolean NOT is needed, use the minus sign format recognised by Google News",
+    "When Boolean NOT is needed, use the minus sign prefix format (-word) recognised by Google News",
   ],
 
 
@@ -160,11 +164,42 @@ DATE RESOLUTION:
 
   // ── Default Filter Values ─────────────────────────────────────────────────
   defaults: {
-    maxResults: 10,        // 5 | 10 | 20
+    maxResults: 9999,      // unlimited by default — UI selector controls display limit
     sort:       "newest",  // "newest" | "oldest" | "relevance"
     language:   "en-IN",
     country:    "IN",
     ceid:       "IN:en",
   },
+
+
+  // ── Orchestrator & Multi-Agent Settings ───────────────────────────────────
+  //
+  //  Controls the behaviour of the central orchestrator and all agents.
+  //
+  orchestrator: {
+
+    //  Model used for cheap intent classification (can be haiku for speed).
+    //  Falls back to the main model above if left null.
+    classificationModel: null,   // e.g. "claude-haiku-4-5-20251001"
+
+    //  Maximum number of times the viz→code pipeline loops to fix errors.
+    maxAgentLoops: 3,
+
+    //  Milliseconds before an individual agent call times out.
+    agentTimeout: 60000,
+
+    //  When true, CodeAgent always does a full Claude review (not just static).
+    alwaysFullCodeReview: false,
+  },
+
+  // ── Visualization Agent ────────────────────────────────────────────────────
+  //
+  //  Extra hints injected into every visualization request.
+  //  Add domain-specific rules here (e.g. always use INR for currency).
+  //
+  vizHints: [
+    // "Always use INR (₹) for Indian currency values",
+    // "Prefer green (#1D9E75) for positive metrics, red (#E24B4A) for negative",
+  ],
 
 };
